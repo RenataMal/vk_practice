@@ -202,7 +202,7 @@ async function processImage(
   try {
     if (!isSupportedImageFile(file)) {
       throw new Error(
-        'Поддерживаются изображения JPG, PNG и BMP.',
+        'Поддерживаются изображения JPG, PNG, BMP, HEIC и HEIF.',
       );
     }
 
