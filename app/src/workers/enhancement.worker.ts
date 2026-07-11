@@ -65,6 +65,48 @@ function round(
   );
 }
 
+function clamp(
+  value: number,
+  minimum: number,
+  maximum: number,
+): number {
+  return Math.min(
+    maximum,
+    Math.max(minimum, value),
+  );
+}
+
+function stabilizeParameters(
+  parameters: EnhancementParameters,
+): EnhancementParameters {
+  const brightness = clamp(
+    parameters.brightness,
+    0.82,
+    1.55,
+  );
+
+  const minimumContrast =
+    brightness >= 1.3
+      ? 0.9
+      : brightness <= 0.9
+        ? 0.9
+        : 0.85;
+
+  return {
+    brightness,
+    contrast: clamp(
+      parameters.contrast,
+      minimumContrast,
+      1.35,
+    ),
+    saturation: clamp(
+      parameters.saturation,
+      0.85,
+      1.35,
+    ),
+  };
+}
+
 function getOutputType(
   file: File,
 ): 'image/jpeg' | 'image/png' {
@@ -243,8 +285,13 @@ async function processImage(
     const inferenceStartedAt =
       performance.now();
 
-    const parameters =
+    const predictedParameters =
       await predictParameters(bitmap);
+
+    const parameters =
+      stabilizeParameters(
+        predictedParameters,
+      );
 
     const inferenceMs =
       performance.now() -
