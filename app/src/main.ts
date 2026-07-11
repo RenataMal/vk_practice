@@ -540,6 +540,8 @@ enhancer.addEventListener(
 );
 
 window.addEventListener('beforeunload', () => {
+  enhancer.dispose();
+
   if (sourceObjectUrl) {
     URL.revokeObjectURL(sourceObjectUrl);
   }
