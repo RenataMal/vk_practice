@@ -1,18 +1,19 @@
 import type {
+  EnhancementResult,
   TaskStatus,
   WorkerInputMessage,
   WorkerOutputMessage,
 } from '../types/task';
 
 interface ResultWaiter {
-  resolve: (blob: Blob) => void;
+  resolve: (result: EnhancementResult) => void;
   reject: (error: Error) => void;
 }
 
 interface TaskRecord {
   status: TaskStatus;
   worker: Worker;
-  result: Blob | null;
+  result: EnhancementResult | null;
   waiters: ResultWaiter[];
 }
 
@@ -21,7 +22,9 @@ export class ImageEnhancer extends EventTarget {
 
   async submit(file: File): Promise<string> {
     if (!(file instanceof File)) {
-      throw new TypeError('На обработку необходимо передать файл.');
+      throw new TypeError(
+        'На обработку необходимо передать файл.',
+      );
     }
 
     if (file.size === 0) {
@@ -61,7 +64,10 @@ export class ImageEnhancer extends EventTarget {
     };
 
     worker.onerror = (event: ErrorEvent): void => {
-      this.failTask(taskId, event.message || 'Ошибка Web Worker.');
+      this.failTask(
+        taskId,
+        event.message || 'Ошибка Web Worker.',
+      );
     };
 
     const message: WorkerInputMessage = {
@@ -77,11 +83,12 @@ export class ImageEnhancer extends EventTarget {
 
   async getStatus(taskId: string): Promise<TaskStatus> {
     const task = this.getTask(taskId);
-
     return { ...task.status };
   }
 
-  async getResult(taskId: string): Promise<Blob> {
+  async getResult(
+    taskId: string,
+  ): Promise<EnhancementResult> {
     const task = this.getTask(taskId);
 
     if (task.result) {
@@ -89,16 +96,21 @@ export class ImageEnhancer extends EventTarget {
     }
 
     if (task.status.status === 'failed') {
-      throw new Error(task.status.error ?? 'Задача завершилась с ошибкой.');
+      throw new Error(
+        task.status.error ??
+          'Задача завершилась с ошибкой.',
+      );
     }
 
     if (task.status.status === 'cancelled') {
       throw new Error('Задача была отменена.');
     }
 
-    return new Promise<Blob>((resolve, reject) => {
-      task.waiters.push({ resolve, reject });
-    });
+    return new Promise<EnhancementResult>(
+      (resolve, reject) => {
+        task.waiters.push({ resolve, reject });
+      },
+    );
   }
 
   async cancel(taskId: string): Promise<boolean> {
@@ -112,10 +124,6 @@ export class ImageEnhancer extends EventTarget {
       return false;
     }
 
-    /*
-     * terminate() сразу останавливает Worker.
-     * Для MVP это наиболее простой способ отмены.
-     */
     task.worker.terminate();
 
     task.status = {
@@ -158,7 +166,7 @@ export class ImageEnhancer extends EventTarget {
     }
 
     if (message.type === 'result') {
-      task.result = message.blob;
+      task.result = message.result;
 
       task.status = {
         taskId,
@@ -168,7 +176,7 @@ export class ImageEnhancer extends EventTarget {
       };
 
       for (const waiter of task.waiters) {
-        waiter.resolve(message.blob);
+        waiter.resolve(message.result);
       }
 
       task.waiters = [];
@@ -183,7 +191,10 @@ export class ImageEnhancer extends EventTarget {
     }
   }
 
-  private failTask(taskId: string, errorMessage: string): void {
+  private failTask(
+    taskId: string,
+    errorMessage: string,
+  ): void {
     const task = this.tasks.get(taskId);
 
     if (!task) {

@@ -236,3 +236,74 @@ progress {
     min-height: 260px;
   }
 }
+
+.result-details {
+  margin-top: 26px;
+  border-top: 1px solid #e2e7ee;
+  padding-top: 24px;
+}
+
+.result-details h2 {
+  margin: 0 0 16px;
+  font-size: 18px;
+}
+
+.parameter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metric-card {
+  border-radius: 12px;
+  padding: 16px;
+  background: #f4f6f9;
+}
+
+.metric-card span {
+  display: block;
+  margin-bottom: 7px;
+  color: #667286;
+  font-size: 13px;
+}
+
+.metric-card strong {
+  font-size: 21px;
+}
+
+.technical-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin: 16px 0 0;
+  border: 1px solid #e2e7ee;
+  border-radius: 12px;
+  background: #e2e7ee;
+}
+
+.technical-metrics div {
+  padding: 14px 16px;
+  background: #ffffff;
+}
+
+.technical-metrics dt {
+  margin-bottom: 5px;
+  color: #6a7689;
+  font-size: 12px;
+}
+
+.technical-metrics dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .parameter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .technical-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

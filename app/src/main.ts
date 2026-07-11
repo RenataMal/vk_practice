@@ -1,6 +1,10 @@
 import './style.css';
 import { ImageEnhancer } from './api/ImageEnhancer';
-import type { TaskStatus } from './types/task';
+import type {
+  EnhancementParameters,
+  ProcessingMetrics,
+  TaskStatus,
+} from './types/task';
 
 const enhancer = new ImageEnhancer();
 
@@ -9,7 +13,9 @@ let currentTaskId: string | null = null;
 let sourceObjectUrl: string | null = null;
 let resultObjectUrl: string | null = null;
 
-function getRequiredElement<T extends Element>(selector: string): T {
+function getRequiredElement<T extends Element>(
+  selector: string,
+): T {
   const element = document.querySelector<T>(selector);
 
   if (!element) {
@@ -26,8 +32,10 @@ app.innerHTML = `
     <header class="header">
       <p class="eyebrow">VK Practice</p>
       <h1>Улучшение изображений в браузере</h1>
+
       <p class="description">
-        Первый MVP: асинхронная обработка JPG и PNG в Web Worker.
+        Автоматический анализ яркости, контрастности и цветности
+        без блокировки основного потока браузера.
       </p>
     </header>
 
@@ -75,6 +83,64 @@ app.innerHTML = `
 
         <p id="error-text" class="error" hidden></p>
       </div>
+
+      <section id="result-details" class="result-details" hidden>
+        <h2>Результаты автоматического анализа</h2>
+
+        <div class="parameter-grid">
+          <article class="metric-card">
+            <span>Яркость</span>
+            <strong id="brightness-value">1.00×</strong>
+          </article>
+
+          <article class="metric-card">
+            <span>Контрастность</span>
+            <strong id="contrast-value">1.00×</strong>
+          </article>
+
+          <article class="metric-card">
+            <span>Цветность</span>
+            <strong id="saturation-value">1.00×</strong>
+          </article>
+
+          <article class="metric-card">
+            <span>Время обработки</span>
+            <strong id="total-time-value">0 мс</strong>
+          </article>
+        </div>
+
+        <dl class="technical-metrics">
+          <div>
+            <dt>Разрешение</dt>
+            <dd id="resolution-value">—</dd>
+          </div>
+
+          <div>
+            <dt>Мегапиксели</dt>
+            <dd id="megapixels-value">—</dd>
+          </div>
+
+          <div>
+            <dt>Декодирование</dt>
+            <dd id="decode-time-value">—</dd>
+          </div>
+
+          <div>
+            <dt>Анализ</dt>
+            <dd id="analysis-time-value">—</dd>
+          </div>
+
+          <div>
+            <dt>Коррекция</dt>
+            <dd id="enhancement-time-value">—</dd>
+          </div>
+
+          <div>
+            <dt>Кодирование</dt>
+            <dd id="encoding-time-value">—</dd>
+          </div>
+        </dl>
+      </section>
     </section>
 
     <section class="comparison">
@@ -149,26 +215,78 @@ const sourceImage =
   getRequiredElement<HTMLImageElement>('#source-image');
 
 const sourcePlaceholder =
-  getRequiredElement<HTMLParagraphElement>('#source-placeholder');
+  getRequiredElement<HTMLParagraphElement>(
+    '#source-placeholder',
+  );
 
 const resultImage =
   getRequiredElement<HTMLImageElement>('#result-image');
 
 const resultPlaceholder =
-  getRequiredElement<HTMLParagraphElement>('#result-placeholder');
+  getRequiredElement<HTMLParagraphElement>(
+    '#result-placeholder',
+  );
 
 const downloadLink =
   getRequiredElement<HTMLAnchorElement>('#download-link');
 
+const resultDetails =
+  getRequiredElement<HTMLElement>('#result-details');
+
+const brightnessValue =
+  getRequiredElement<HTMLElement>('#brightness-value');
+
+const contrastValue =
+  getRequiredElement<HTMLElement>('#contrast-value');
+
+const saturationValue =
+  getRequiredElement<HTMLElement>('#saturation-value');
+
+const totalTimeValue =
+  getRequiredElement<HTMLElement>('#total-time-value');
+
+const resolutionValue =
+  getRequiredElement<HTMLElement>('#resolution-value');
+
+const megapixelsValue =
+  getRequiredElement<HTMLElement>('#megapixels-value');
+
+const decodeTimeValue =
+  getRequiredElement<HTMLElement>('#decode-time-value');
+
+const analysisTimeValue =
+  getRequiredElement<HTMLElement>('#analysis-time-value');
+
+const enhancementTimeValue =
+  getRequiredElement<HTMLElement>(
+    '#enhancement-time-value',
+  );
+
+const encodingTimeValue =
+  getRequiredElement<HTMLElement>('#encoding-time-value');
+
 const statusNames: Record<TaskStatus['status'], string> = {
   queued: 'Задача поставлена в очередь',
   decoding: 'Декодирование изображения',
+  analyzing: 'Анализ изображения',
   enhancing: 'Применение коррекции',
   encoding: 'Кодирование результата',
   completed: 'Обработка завершена',
   cancelled: 'Задача отменена',
   failed: 'Ошибка обработки',
 };
+
+function formatMultiplier(value: number): string {
+  return `${value.toFixed(2)}×`;
+}
+
+function formatTime(milliseconds: number): string {
+  if (milliseconds >= 1000) {
+    return `${(milliseconds / 1000).toFixed(2)} с`;
+  }
+
+  return `${milliseconds.toFixed(1)} мс`;
+}
 
 function clearError(): void {
   errorText.hidden = true;
@@ -198,6 +316,8 @@ function resetResult(): void {
   downloadLink.hidden = true;
   downloadLink.removeAttribute('href');
   downloadLink.removeAttribute('download');
+
+  resultDetails.hidden = true;
 }
 
 function resetSource(): void {
@@ -215,6 +335,41 @@ function setProcessingState(isProcessing: boolean): void {
   processButton.disabled = isProcessing || !selectedFile;
   cancelButton.disabled = !isProcessing;
   fileInput.disabled = isProcessing;
+}
+
+function renderParameters(
+  parameters: EnhancementParameters,
+): void {
+  brightnessValue.textContent =
+    formatMultiplier(parameters.brightness);
+
+  contrastValue.textContent =
+    formatMultiplier(parameters.contrast);
+
+  saturationValue.textContent =
+    formatMultiplier(parameters.saturation);
+}
+
+function renderMetrics(metrics: ProcessingMetrics): void {
+  totalTimeValue.textContent = formatTime(metrics.totalMs);
+
+  resolutionValue.textContent =
+    `${metrics.width} × ${metrics.height}`;
+
+  megapixelsValue.textContent =
+    `${metrics.megapixels.toFixed(2)} Мп`;
+
+  decodeTimeValue.textContent =
+    formatTime(metrics.decodeMs);
+
+  analysisTimeValue.textContent =
+    formatTime(metrics.analysisMs);
+
+  enhancementTimeValue.textContent =
+    formatTime(metrics.enhancementMs);
+
+  encodingTimeValue.textContent =
+    formatTime(metrics.encodingMs);
 }
 
 fileInput.addEventListener('change', () => {
@@ -258,7 +413,8 @@ fileInput.addEventListener('change', () => {
   fileInfo.textContent =
     `${file.name} · ${sizeMb.toFixed(2)} МБ · ${file.type}`;
 
-  statusText.textContent = 'Изображение готово к обработке';
+  statusText.textContent =
+    'Изображение готово к обработке';
 
   sourceObjectUrl = URL.createObjectURL(file);
 
@@ -286,17 +442,26 @@ processButton.addEventListener('click', async () => {
 
     const result = await enhancer.getResult(currentTaskId);
 
-    resultObjectUrl = URL.createObjectURL(result);
+    resultObjectUrl = URL.createObjectURL(result.blob);
 
     resultImage.src = resultObjectUrl;
     resultImage.hidden = false;
     resultPlaceholder.hidden = true;
 
+    renderParameters(result.parameters);
+    renderMetrics(result.metrics);
+    resultDetails.hidden = false;
+
     const extension =
-      result.type === 'image/png' ? 'png' : 'jpg';
+      result.blob.type === 'image/png' ? 'png' : 'jpg';
+
+    const originalName =
+      selectedFile.name.replace(/\.[^.]+$/, '');
 
     downloadLink.href = resultObjectUrl;
-    downloadLink.download = `enhanced-image.${extension}`;
+    downloadLink.download =
+      `${originalName}-enhanced.${extension}`;
+
     downloadLink.hidden = false;
   } catch (error) {
     const message =
@@ -304,7 +469,9 @@ processButton.addEventListener('click', async () => {
         ? error.message
         : 'Неизвестная ошибка обработки.';
 
-    showError(message);
+    if (message !== 'Задача была отменена.') {
+      showError(message);
+    }
   } finally {
     setProcessingState(false);
   }
@@ -316,7 +483,8 @@ cancelButton.addEventListener('click', async () => {
   }
 
   try {
-    const cancelled = await enhancer.cancel(currentTaskId);
+    const cancelled =
+      await enhancer.cancel(currentTaskId);
 
     if (cancelled) {
       statusText.textContent = 'Задача отменена';
@@ -334,30 +502,42 @@ cancelButton.addEventListener('click', async () => {
   }
 });
 
-enhancer.addEventListener('statuschange', (event: Event) => {
-  const customEvent = event as CustomEvent<TaskStatus>;
-  const status = customEvent.detail;
+enhancer.addEventListener(
+  'statuschange',
+  (event: Event) => {
+    const customEvent =
+      event as CustomEvent<TaskStatus>;
 
-  if (currentTaskId && status.taskId !== currentTaskId) {
-    return;
-  }
+    const status = customEvent.detail;
 
-  statusText.textContent = statusNames[status.status];
-  progressText.textContent = `${status.progress}%`;
-  progressBar.value = status.progress;
+    if (
+      currentTaskId &&
+      status.taskId !== currentTaskId
+    ) {
+      return;
+    }
 
-  if (status.error) {
-    showError(status.error);
-  }
+    statusText.textContent =
+      statusNames[status.status];
 
-  if (
-    status.status === 'completed' ||
-    status.status === 'cancelled' ||
-    status.status === 'failed'
-  ) {
-    setProcessingState(false);
-  }
-});
+    progressText.textContent =
+      `${status.progress}%`;
+
+    progressBar.value = status.progress;
+
+    if (status.error) {
+      showError(status.error);
+    }
+
+    if (
+      status.status === 'completed' ||
+      status.status === 'cancelled' ||
+      status.status === 'failed'
+    ) {
+      setProcessingState(false);
+    }
+  },
+);
 
 window.addEventListener('beforeunload', () => {
   if (sourceObjectUrl) {

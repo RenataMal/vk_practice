@@ -1,6 +1,7 @@
 export type TaskState =
   | 'queued'
   | 'decoding'
+  | 'analyzing'
   | 'enhancing'
   | 'encoding'
   | 'completed'
@@ -12,6 +13,29 @@ export interface TaskStatus {
   status: TaskState;
   progress: number;
   error: string | null;
+}
+
+export interface EnhancementParameters {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+}
+
+export interface ProcessingMetrics {
+  width: number;
+  height: number;
+  megapixels: number;
+  decodeMs: number;
+  analysisMs: number;
+  enhancementMs: number;
+  encodingMs: number;
+  totalMs: number;
+}
+
+export interface EnhancementResult {
+  blob: Blob;
+  parameters: EnhancementParameters;
+  metrics: ProcessingMetrics;
 }
 
 export interface ProcessImageMessage {
@@ -30,7 +54,7 @@ export interface WorkerStatusMessage {
 export interface WorkerResultMessage {
   type: 'result';
   taskId: string;
-  blob: Blob;
+  result: EnhancementResult;
 }
 
 export interface WorkerErrorMessage {
