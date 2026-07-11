@@ -1,4 +1,4 @@
-/// <reference lib="webworker" />
+import * as ort from 'onnxruntime-web/wasm';
 
 import type {
   EnhancementParameters,
@@ -9,10 +9,44 @@ import type {
   WorkerOutputMessage,
 } from '../types/task';
 
-const workerContext = self as DedicatedWorkerGlobalScope;
+interface WorkerContext {
+  postMessage(message: WorkerOutputMessage): void;
+  onmessage:
+    | ((event: MessageEvent<WorkerInputMessage>) => void)
+    | null;
+  location: Location;
+}
+
+const workerContext = self as unknown as WorkerContext;
 
 const MAX_PIXELS = 15_000_000;
-const ANALYSIS_SIZE = 96;
+const MODEL_INPUT_SIZE = 96;
+
+const baseUrl = new URL(
+  import.meta.env.BASE_URL,
+  workerContext.location.origin,
+);
+
+const modelUrl = new URL(
+  'models/enhancer.onnx',
+  baseUrl,
+).href;
+
+ort.env.wasm.numThreads = 1;
+
+ort.env.wasm.wasmPaths = {
+  mjs: new URL(
+    'wasm/ort-wasm-simd-threaded.mjs',
+    baseUrl,
+  ).href,
+  wasm: new URL(
+    'wasm/ort-wasm-simd-threaded.wasm',
+    baseUrl,
+  ).href,
+};
+
+let sessionPromise: Promise<ort.InferenceSession> | null =
+  null;
 
 function sendStatus(
   taskId: string,
@@ -29,154 +63,165 @@ function sendStatus(
   workerContext.postMessage(message);
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
+function clamp(
+  value: number,
+  minimum: number,
+  maximum: number,
+): number {
+  return Math.min(
+    Math.max(value, minimum),
+    maximum,
+  );
 }
 
-function round(value: number, digits = 3): number {
+function round(
+  value: number,
+  digits = 3,
+): number {
   const multiplier = 10 ** digits;
+
   return Math.round(value * multiplier) / multiplier;
 }
 
-function getOutputType(file: File): 'image/jpeg' | 'image/png' {
-  return file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+function getOutputType(
+  file: File,
+): 'image/jpeg' | 'image/png' {
+  return file.type === 'image/png'
+    ? 'image/png'
+    : 'image/jpeg';
 }
 
-function calculateParameters(
-  imageData: ImageData,
-): EnhancementParameters {
-  const pixels = imageData.data;
-
-  let validPixelCount = 0;
-  let lumaSum = 0;
-  let lumaSquaredSum = 0;
-  let chromaSum = 0;
-
-  for (let index = 0; index < pixels.length; index += 4) {
-    const alpha = pixels[index + 3];
-
-    if (alpha < 16) {
-      continue;
-    }
-
-    const red = pixels[index] / 255;
-    const green = pixels[index + 1] / 255;
-    const blue = pixels[index + 2] / 255;
-
-    const luma =
-      0.2126 * red +
-      0.7152 * green +
-      0.0722 * blue;
-
-    const maximum = Math.max(red, green, blue);
-    const minimum = Math.min(red, green, blue);
-    const chroma = maximum - minimum;
-
-    lumaSum += luma;
-    lumaSquaredSum += luma * luma;
-    chromaSum += chroma;
-    validPixelCount += 1;
+function getSession(): Promise<ort.InferenceSession> {
+  if (!sessionPromise) {
+    sessionPromise = ort.InferenceSession.create(
+      modelUrl,
+      {
+        executionProviders: ['wasm'],
+        graphOptimizationLevel: 'all',
+      },
+    );
   }
 
-  if (validPixelCount === 0) {
-    return {
-      brightness: 1,
-      contrast: 1,
-      saturation: 1,
-    };
-  }
+  return sessionPromise;
+}
 
-  const meanLuma = lumaSum / validPixelCount;
-
-  const variance = Math.max(
-    lumaSquaredSum / validPixelCount - meanLuma ** 2,
-    0,
+function createModelInput(
+  bitmap: ImageBitmap,
+): Float32Array {
+  const canvas = new OffscreenCanvas(
+    MODEL_INPUT_SIZE,
+    MODEL_INPUT_SIZE,
   );
 
-  const standardDeviation = Math.sqrt(variance);
-  const meanChroma = chromaSum / validPixelCount;
+  const context = canvas.getContext('2d', {
+    willReadFrequently: true,
+  });
 
-  let brightness = 1;
-  let contrast = 1;
-  let saturation = 1;
-
-  if (meanLuma < 0.42) {
-    brightness = clamp(
-      0.5 / Math.max(meanLuma, 0.08),
-      1,
-      1.28,
-    );
-  } else if (meanLuma > 0.68) {
-    brightness = clamp(0.58 / meanLuma, 0.8, 1);
-  }
-
-  if (standardDeviation < 0.16) {
-    contrast = clamp(
-      0.2 / Math.max(standardDeviation, 0.05),
-      1,
-      1.35,
-    );
-  } else if (standardDeviation > 0.31) {
-    contrast = clamp(
-      0.28 / standardDeviation,
-      0.88,
-      1,
+  if (!context) {
+    throw new Error(
+      'Не удалось подготовить изображение для модели.',
     );
   }
 
-  if (meanChroma < 0.12) {
-    saturation = clamp(
-      0.16 / Math.max(meanChroma, 0.04),
+  context.fillStyle = '#ffffff';
+
+  context.fillRect(
+    0,
+    0,
+    MODEL_INPUT_SIZE,
+    MODEL_INPUT_SIZE,
+  );
+
+  context.drawImage(
+    bitmap,
+    0,
+    0,
+    MODEL_INPUT_SIZE,
+    MODEL_INPUT_SIZE,
+  );
+
+  const imageData = context.getImageData(
+    0,
+    0,
+    MODEL_INPUT_SIZE,
+    MODEL_INPUT_SIZE,
+  );
+
+  const pixelCount =
+    MODEL_INPUT_SIZE * MODEL_INPUT_SIZE;
+
+  const tensorData = new Float32Array(
+    pixelCount * 3,
+  );
+
+  for (
+    let pixelIndex = 0;
+    pixelIndex < pixelCount;
+    pixelIndex += 1
+  ) {
+    const dataIndex = pixelIndex * 4;
+
+    tensorData[pixelIndex] =
+      imageData.data[dataIndex] / 255;
+
+    tensorData[pixelCount + pixelIndex] =
+      imageData.data[dataIndex + 1] / 255;
+
+    tensorData[pixelCount * 2 + pixelIndex] =
+      imageData.data[dataIndex + 2] / 255;
+  }
+
+  return tensorData;
+}
+
+async function predictParameters(
+  bitmap: ImageBitmap,
+): Promise<EnhancementParameters> {
+  const session = await getSession();
+  const tensorData = createModelInput(bitmap);
+
+  const inputTensor = new ort.Tensor(
+    'float32',
+    tensorData,
+    [
       1,
-      1.3,
+      3,
+      MODEL_INPUT_SIZE,
+      MODEL_INPUT_SIZE,
+    ],
+  );
+
+  const outputs = await session.run({
+    image: inputTensor,
+  });
+
+  const outputTensor = outputs.parameters;
+
+  if (!outputTensor) {
+    throw new Error(
+      'Модель не вернула параметры коррекции.',
     );
-  } else if (meanChroma > 0.34) {
-    saturation = clamp(
-      0.3 / meanChroma,
-      0.88,
-      1,
+  }
+
+  const values = outputTensor.data;
+
+  if (values.length < 3) {
+    throw new Error(
+      'Модель вернула некорректный результат.',
     );
   }
 
   return {
-    brightness: round(brightness),
-    contrast: round(contrast),
-    saturation: round(saturation),
+    brightness: round(
+      clamp(Number(values[0]), 0.8, 1.28),
+    ),
+    contrast: round(
+      clamp(Number(values[1]), 0.88, 1.35),
+    ),
+    saturation: round(
+      clamp(Number(values[2]), 0.88, 1.3),
+    ),
   };
-}
-
-function createAnalysisImageData(
-  bitmap: ImageBitmap,
-): ImageData {
-  const analysisCanvas = new OffscreenCanvas(
-    ANALYSIS_SIZE,
-    ANALYSIS_SIZE,
-  );
-
-  const analysisContext = analysisCanvas.getContext('2d', {
-    willReadFrequently: true,
-  });
-
-  if (!analysisContext) {
-    throw new Error(
-      'Не удалось создать контекст для анализа изображения.',
-    );
-  }
-
-  analysisContext.drawImage(
-    bitmap,
-    0,
-    0,
-    ANALYSIS_SIZE,
-    ANALYSIS_SIZE,
-  );
-
-  return analysisContext.getImageData(
-    0,
-    0,
-    ANALYSIS_SIZE,
-    ANALYSIS_SIZE,
-  );
 }
 
 async function processImage(
@@ -188,7 +233,9 @@ async function processImage(
   let bitmap: ImageBitmap | null = null;
 
   try {
-    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+    if (
+      !['image/jpeg', 'image/png'].includes(file.type)
+    ) {
       throw new Error(
         'В текущей версии поддерживаются только изображения JPG и PNG.',
       );
@@ -200,9 +247,11 @@ async function processImage(
 
     bitmap = await createImageBitmap(file);
 
-    const decodeMs = performance.now() - decodeStartedAt;
+    const decodeMs =
+      performance.now() - decodeStartedAt;
 
-    const totalPixels = bitmap.width * bitmap.height;
+    const totalPixels =
+      bitmap.width * bitmap.height;
 
     if (totalPixels > MAX_PIXELS) {
       throw new Error(
@@ -211,18 +260,20 @@ async function processImage(
       );
     }
 
-    sendStatus(taskId, 'analyzing', 28);
+    sendStatus(taskId, 'analyzing', 25);
 
-    const analysisStartedAt = performance.now();
+    const inferenceStartedAt = performance.now();
 
-    const analysisImageData = createAnalysisImageData(bitmap);
-    const parameters = calculateParameters(analysisImageData);
+    const parameters =
+      await predictParameters(bitmap);
 
-    const analysisMs = performance.now() - analysisStartedAt;
+    const inferenceMs =
+      performance.now() - inferenceStartedAt;
 
-    sendStatus(taskId, 'enhancing', 45);
+    sendStatus(taskId, 'enhancing', 50);
 
-    const enhancementStartedAt = performance.now();
+    const enhancementStartedAt =
+      performance.now();
 
     const canvas = new OffscreenCanvas(
       bitmap.width,
@@ -258,14 +309,19 @@ async function processImage(
 
     sendStatus(taskId, 'encoding', 88);
 
-    const encodingStartedAt = performance.now();
+    const encodingStartedAt =
+      performance.now();
 
     const outputType = getOutputType(file);
 
-    const resultBlob = await canvas.convertToBlob({
-      type: outputType,
-      quality: outputType === 'image/jpeg' ? 0.92 : undefined,
-    });
+    const resultBlob =
+      await canvas.convertToBlob({
+        type: outputType,
+        quality:
+          outputType === 'image/jpeg'
+            ? 0.92
+            : undefined,
+      });
 
     const encodingMs =
       performance.now() - encodingStartedAt;
@@ -276,10 +332,16 @@ async function processImage(
     const metrics: ProcessingMetrics = {
       width,
       height,
-      megapixels: round(totalPixels / 1_000_000, 2),
+      megapixels: round(
+        totalPixels / 1_000_000,
+        2,
+      ),
       decodeMs: round(decodeMs, 1),
-      analysisMs: round(analysisMs, 1),
-      enhancementMs: round(enhancementMs, 1),
+      analysisMs: round(inferenceMs, 1),
+      enhancementMs: round(
+        enhancementMs,
+        1,
+      ),
       encodingMs: round(encodingMs, 1),
       totalMs: round(totalMs, 1),
     };
@@ -292,13 +354,11 @@ async function processImage(
 
     sendStatus(taskId, 'completed', 100);
 
-    const resultMessage: WorkerOutputMessage = {
+    workerContext.postMessage({
       type: 'result',
       taskId,
       result,
-    };
-
-    workerContext.postMessage(resultMessage);
+    });
   } catch (error) {
     if (bitmap) {
       bitmap.close();
@@ -309,24 +369,21 @@ async function processImage(
         ? error.message
         : 'Неизвестная ошибка обработки.';
 
-    const errorMessage: WorkerOutputMessage = {
+    workerContext.postMessage({
       type: 'error',
       taskId,
       error: message,
-    };
-
-    workerContext.postMessage(errorMessage);
+    });
   }
 }
 
 workerContext.onmessage = (
   event: MessageEvent<WorkerInputMessage>,
 ): void => {
-  const message = event.data;
-
-  if (message.type === 'process') {
-    void processImage(message.taskId, message.file);
+  if (event.data.type === 'process') {
+    void processImage(
+      event.data.taskId,
+      event.data.file,
+    );
   }
 };
-
-export {};

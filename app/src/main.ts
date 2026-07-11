@@ -126,7 +126,7 @@ app.innerHTML = `
           </div>
 
           <div>
-            <dt>Анализ</dt>
+            <dt>ML-инференс</dt>
             <dd id="analysis-time-value">—</dd>
           </div>
 
