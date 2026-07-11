@@ -1,0 +1,34 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Python artifacts
+ml/artifacts/models/*
+ml/artifacts/plots/*
+!ml/artifacts/models/.gitkeep
+!ml/artifacts/plots/.gitkeep
+
+# Node.js
+app/node_modules/
+app/dist/
+app/.vite/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Benchmark files
+benchmark/reference-images/*
+benchmark/results/*
+!benchmark/reference-images/.gitkeep
+!benchmark/results/.gitkeep
+
+# IDE and OS
+.idea/
+.DS_Store
+Thumbs.db

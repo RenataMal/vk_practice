@@ -1,0 +1,17 @@
+numpy
+pandas
+Pillow
+matplotlib
+scikit-learn
+scikit-image
+opencv-python-headless
+tqdm
+jupyterlab
+ipykernel
+pytest
+ruff
+torch
+torchvision
+onnx
+onnxruntime
+onnxscript
