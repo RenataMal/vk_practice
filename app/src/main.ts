@@ -49,7 +49,7 @@ app.innerHTML = `
         <input
           id="file-input"
           type="file"
-          accept="image/jpeg,image/png"
+          accept="image/jpeg,image/png,image/bmp,image/x-ms-bmp,.jpg,.jpeg,.png,.bmp"
         />
       </label>
 
@@ -394,9 +394,20 @@ fileInput.addEventListener('change', () => {
     return;
   }
 
-  const allowedTypes = ['image/jpeg', 'image/png'];
+  const supportedMimeTypes = [
+    'image/jpeg',
+    'image/png',
+    'image/bmp',
+    'image/x-ms-bmp',
+  ];
 
-  if (!allowedTypes.includes(file.type)) {
+  const hasSupportedExtension =
+    /\.(jpe?g|png|bmp)$/i.test(file.name);
+
+  if (
+    !supportedMimeTypes.includes(file.type) &&
+    !hasSupportedExtension
+  ) {
     selectedFile = null;
     fileInput.value = '';
 
@@ -404,7 +415,7 @@ fileInput.addEventListener('change', () => {
     statusText.textContent = 'Неподдерживаемый формат';
 
     showError(
-      'В текущей версии поддерживаются только изображения JPG и PNG.',
+      'Поддерживаются изображения JPG, PNG и BMP.',
     );
 
     setProcessingState(false);

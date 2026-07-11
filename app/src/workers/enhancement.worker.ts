@@ -1,5 +1,12 @@
 import * as ort from 'onnxruntime-web/wasm';
 
+import {
+  decodeImage,
+  isBmpFile,
+  isPngFile,
+  isSupportedImageFile,
+} from '../image/decode';
+
 import type {
   EnhancementParameters,
   EnhancementResult,
@@ -17,7 +24,8 @@ interface WorkerContext {
   location: Location;
 }
 
-const workerContext = self as unknown as WorkerContext;
+const workerContext =
+  self as unknown as WorkerContext;
 
 const MAX_PIXELS = 15_000_000;
 const MODEL_INPUT_SIZE = 96;
@@ -45,22 +53,20 @@ ort.env.wasm.wasmPaths = {
   ).href,
 };
 
-let sessionPromise: Promise<ort.InferenceSession> | null =
-  null;
+let sessionPromise:
+  Promise<ort.InferenceSession> | null = null;
 
 function sendStatus(
   taskId: string,
   status: TaskState,
   progress: number,
 ): void {
-  const message: WorkerOutputMessage = {
+  workerContext.postMessage({
     type: 'status',
     taskId,
     status,
     progress,
-  };
-
-  workerContext.postMessage(message);
+  });
 }
 
 function clamp(
@@ -80,26 +86,35 @@ function round(
 ): number {
   const multiplier = 10 ** digits;
 
-  return Math.round(value * multiplier) / multiplier;
+  return (
+    Math.round(value * multiplier) /
+    multiplier
+  );
 }
 
 function getOutputType(
   file: File,
 ): 'image/jpeg' | 'image/png' {
-  return file.type === 'image/png'
-    ? 'image/png'
-    : 'image/jpeg';
+  if (
+    isPngFile(file) ||
+    isBmpFile(file)
+  ) {
+    return 'image/png';
+  }
+
+  return 'image/jpeg';
 }
 
 function getSession(): Promise<ort.InferenceSession> {
   if (!sessionPromise) {
-    sessionPromise = ort.InferenceSession.create(
-      modelUrl,
-      {
-        executionProviders: ['wasm'],
-        graphOptimizationLevel: 'all',
-      },
-    );
+    sessionPromise =
+      ort.InferenceSession.create(
+        modelUrl,
+        {
+          executionProviders: ['wasm'],
+          graphOptimizationLevel: 'all',
+        },
+      );
   }
 
   return sessionPromise;
@@ -167,7 +182,9 @@ function createModelInput(
     tensorData[pixelCount + pixelIndex] =
       imageData.data[dataIndex + 1] / 255;
 
-    tensorData[pixelCount * 2 + pixelIndex] =
+    tensorData[
+      pixelCount * 2 + pixelIndex
+    ] =
       imageData.data[dataIndex + 2] / 255;
   }
 
@@ -213,13 +230,25 @@ async function predictParameters(
 
   return {
     brightness: round(
-      clamp(Number(values[0]), 0.8, 1.28),
+      clamp(
+        Number(values[0]),
+        0.8,
+        1.28,
+      ),
     ),
     contrast: round(
-      clamp(Number(values[1]), 0.88, 1.35),
+      clamp(
+        Number(values[1]),
+        0.88,
+        1.35,
+      ),
     ),
     saturation: round(
-      clamp(Number(values[2]), 0.88, 1.3),
+      clamp(
+        Number(values[2]),
+        0.88,
+        1.3,
+      ),
     ),
   };
 }
@@ -228,27 +257,35 @@ async function processImage(
   taskId: string,
   file: File,
 ): Promise<void> {
-  const processStartedAt = performance.now();
+  const processStartedAt =
+    performance.now();
 
   let bitmap: ImageBitmap | null = null;
 
   try {
-    if (
-      !['image/jpeg', 'image/png'].includes(file.type)
-    ) {
+    if (!isSupportedImageFile(file)) {
       throw new Error(
-        'В текущей версии поддерживаются только изображения JPG и PNG.',
+        'Поддерживаются изображения JPG, PNG и BMP.',
       );
     }
 
-    sendStatus(taskId, 'decoding', 10);
+    sendStatus(
+      taskId,
+      'decoding',
+      10,
+    );
 
-    const decodeStartedAt = performance.now();
+    const decodeStartedAt =
+      performance.now();
 
-    bitmap = await createImageBitmap(file);
+    bitmap = await decodeImage(
+      file,
+      MAX_PIXELS,
+    );
 
     const decodeMs =
-      performance.now() - decodeStartedAt;
+      performance.now() -
+      decodeStartedAt;
 
     const totalPixels =
       bitmap.width * bitmap.height;
@@ -260,17 +297,27 @@ async function processImage(
       );
     }
 
-    sendStatus(taskId, 'analyzing', 25);
+    sendStatus(
+      taskId,
+      'analyzing',
+      25,
+    );
 
-    const inferenceStartedAt = performance.now();
+    const inferenceStartedAt =
+      performance.now();
 
     const parameters =
       await predictParameters(bitmap);
 
     const inferenceMs =
-      performance.now() - inferenceStartedAt;
+      performance.now() -
+      inferenceStartedAt;
 
-    sendStatus(taskId, 'enhancing', 50);
+    sendStatus(
+      taskId,
+      'enhancing',
+      50,
+    );
 
     const enhancementStartedAt =
       performance.now();
@@ -280,7 +327,8 @@ async function processImage(
       bitmap.height,
     );
 
-    const context = canvas.getContext('2d');
+    const context =
+      canvas.getContext('2d');
 
     if (!context) {
       throw new Error(
@@ -297,9 +345,14 @@ async function processImage(
     context.drawImage(bitmap, 0, 0);
 
     const enhancementMs =
-      performance.now() - enhancementStartedAt;
+      performance.now() -
+      enhancementStartedAt;
 
-    sendStatus(taskId, 'enhancing', 78);
+    sendStatus(
+      taskId,
+      'enhancing',
+      78,
+    );
 
     const width = bitmap.width;
     const height = bitmap.height;
@@ -307,12 +360,17 @@ async function processImage(
     bitmap.close();
     bitmap = null;
 
-    sendStatus(taskId, 'encoding', 88);
+    sendStatus(
+      taskId,
+      'encoding',
+      88,
+    );
 
     const encodingStartedAt =
       performance.now();
 
-    const outputType = getOutputType(file);
+    const outputType =
+      getOutputType(file);
 
     const resultBlob =
       await canvas.convertToBlob({
@@ -324,10 +382,12 @@ async function processImage(
       });
 
     const encodingMs =
-      performance.now() - encodingStartedAt;
+      performance.now() -
+      encodingStartedAt;
 
     const totalMs =
-      performance.now() - processStartedAt;
+      performance.now() -
+      processStartedAt;
 
     const metrics: ProcessingMetrics = {
       width,
@@ -336,14 +396,26 @@ async function processImage(
         totalPixels / 1_000_000,
         2,
       ),
-      decodeMs: round(decodeMs, 1),
-      analysisMs: round(inferenceMs, 1),
+      decodeMs: round(
+        decodeMs,
+        1,
+      ),
+      analysisMs: round(
+        inferenceMs,
+        1,
+      ),
       enhancementMs: round(
         enhancementMs,
         1,
       ),
-      encodingMs: round(encodingMs, 1),
-      totalMs: round(totalMs, 1),
+      encodingMs: round(
+        encodingMs,
+        1,
+      ),
+      totalMs: round(
+        totalMs,
+        1,
+      ),
     };
 
     const result: EnhancementResult = {
@@ -352,7 +424,11 @@ async function processImage(
       metrics,
     };
 
-    sendStatus(taskId, 'completed', 100);
+    sendStatus(
+      taskId,
+      'completed',
+      100,
+    );
 
     workerContext.postMessage({
       type: 'result',
