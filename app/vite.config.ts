@@ -6,6 +6,7 @@ import {
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  base: '/vk_practice/',
   build: {
     rollupOptions: {
       input: {
