@@ -39,4 +39,3 @@ ml/artifacts/metrics/*
 !ml/data/source/.gitkeep
 !ml/data/splits/.gitkeep
 !ml/artifacts/metrics/.gitkeep
-!app/public/models/enhancer.onnx

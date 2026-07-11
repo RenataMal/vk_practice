@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "inputSize": 96,
+  "parameterMin": [
+    0.800000011920929,
+    0.8799999952316284,
+    0.8799999952316284
+  ],
+  "parameterMax": [
+    1.2799999713897705,
+    1.350000023841858,
+    1.2999999523162842
+  ],
+  "tensors": {
+    "features.0.weight": {
+      "offset": 0,
+      "length": 216,
+      "shape": [
+        8,
+        3,
+        3,
+        3
+      ]
+    },
+    "features.0.bias": {
+      "offset": 216,
+      "length": 8,
+      "shape": [
+        8
+      ]
+    },
+    "features.2.weight": {
+      "offset": 224,
+      "length": 1152,
+      "shape": [
+        16,
+        8,
+        3,
+        3
+      ]
+    },
+    "features.2.bias": {
+      "offset": 1376,
+      "length": 16,
+      "shape": [
+        16
+      ]
+    },
+    "features.4.weight": {
+      "offset": 1392,
+      "length": 3456,
+      "shape": [
+        24,
+        16,
+        3,
+        3
+      ]
+    },
+    "features.4.bias": {
+      "offset": 4848,
+      "length": 24,
+      "shape": [
+        24
+      ]
+    },
+    "features.6.weight": {
+      "offset": 4872,
+      "length": 6912,
+      "shape": [
+        32,
+        24,
+        3,
+        3
+      ]
+    },
+    "features.6.bias": {
+      "offset": 11784,
+      "length": 32,
+      "shape": [
+        32
+      ]
+    },
+    "regressor.1.weight": {
+      "offset": 11816,
+      "length": 512,
+      "shape": [
+        16,
+        32
+      ]
+    },
+    "regressor.1.bias": {
+      "offset": 12328,
+      "length": 16,
+      "shape": [
+        16
+      ]
+    },
+    "regressor.3.weight": {
+      "offset": 12344,
+      "length": 48,
+      "shape": [
+        3,
+        16
+      ]
+    },
+    "regressor.3.bias": {
+      "offset": 12392,
+      "length": 3,
+      "shape": [
+        3
+      ]
+    }
+  }
+}

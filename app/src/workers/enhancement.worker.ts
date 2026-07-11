@@ -1,11 +1,13 @@
-import * as ort from 'onnxruntime-web/wasm';
-
 import {
   decodeImage,
   isBmpFile,
   isPngFile,
   isSupportedImageFile,
 } from '../image/decode';
+
+import {
+  TinyEnhancementRuntime,
+} from '../model/TinyEnhancementRuntime';
 
 import type {
   EnhancementParameters,
@@ -35,26 +37,8 @@ const baseUrl = new URL(
   workerContext.location.origin,
 );
 
-const modelUrl = new URL(
-  'models/enhancer.onnx',
-  baseUrl,
-).href;
-
-ort.env.wasm.numThreads = 1;
-
-ort.env.wasm.wasmPaths = {
-  mjs: new URL(
-    'wasm/ort-wasm-simd-threaded.mjs',
-    baseUrl,
-  ).href,
-  wasm: new URL(
-    'wasm/ort-wasm-simd-threaded.wasm',
-    baseUrl,
-  ).href,
-};
-
-let sessionPromise:
-  Promise<ort.InferenceSession> | null = null;
+let runtimePromise:
+  Promise<TinyEnhancementRuntime> | null = null;
 
 function sendStatus(
   taskId: string,
@@ -67,17 +51,6 @@ function sendStatus(
     status,
     progress,
   });
-}
-
-function clamp(
-  value: number,
-  minimum: number,
-  maximum: number,
-): number {
-  return Math.min(
-    Math.max(value, minimum),
-    maximum,
-  );
 }
 
 function round(
@@ -105,19 +78,14 @@ function getOutputType(
   return 'image/jpeg';
 }
 
-function getSession(): Promise<ort.InferenceSession> {
-  if (!sessionPromise) {
-    sessionPromise =
-      ort.InferenceSession.create(
-        modelUrl,
-        {
-          executionProviders: ['wasm'],
-          graphOptimizationLevel: 'all',
-        },
-      );
+function getRuntime():
+  Promise<TinyEnhancementRuntime> {
+  if (!runtimePromise) {
+    runtimePromise =
+      TinyEnhancementRuntime.create(baseUrl);
   }
 
-  return sessionPromise;
+  return runtimePromise;
 }
 
 function createModelInput(
@@ -138,6 +106,17 @@ function createModelInput(
     );
   }
 
+  const sourceSize = Math.min(
+    bitmap.width,
+    bitmap.height,
+  );
+
+  const sourceX =
+    (bitmap.width - sourceSize) / 2;
+
+  const sourceY =
+    (bitmap.height - sourceSize) / 2;
+
   context.fillStyle = '#ffffff';
 
   context.fillRect(
@@ -149,6 +128,10 @@ function createModelInput(
 
   context.drawImage(
     bitmap,
+    sourceX,
+    sourceY,
+    sourceSize,
+    sourceSize,
     0,
     0,
     MODEL_INPUT_SIZE,
@@ -174,18 +157,23 @@ function createModelInput(
     pixelIndex < pixelCount;
     pixelIndex += 1
   ) {
-    const dataIndex = pixelIndex * 4;
+    const dataIndex =
+      pixelIndex * 4;
 
     tensorData[pixelIndex] =
       imageData.data[dataIndex] / 255;
 
-    tensorData[pixelCount + pixelIndex] =
-      imageData.data[dataIndex + 1] / 255;
+    tensorData[
+      pixelCount + pixelIndex
+    ] =
+      imageData.data[dataIndex + 1] /
+      255;
 
     tensorData[
       pixelCount * 2 + pixelIndex
     ] =
-      imageData.data[dataIndex + 2] / 255;
+      imageData.data[dataIndex + 2] /
+      255;
   }
 
   return tensorData;
@@ -194,63 +182,12 @@ function createModelInput(
 async function predictParameters(
   bitmap: ImageBitmap,
 ): Promise<EnhancementParameters> {
-  const session = await getSession();
-  const tensorData = createModelInput(bitmap);
+  const runtime = await getRuntime();
 
-  const inputTensor = new ort.Tensor(
-    'float32',
-    tensorData,
-    [
-      1,
-      3,
-      MODEL_INPUT_SIZE,
-      MODEL_INPUT_SIZE,
-    ],
-  );
+  const input =
+    createModelInput(bitmap);
 
-  const outputs = await session.run({
-    image: inputTensor,
-  });
-
-  const outputTensor = outputs.parameters;
-
-  if (!outputTensor) {
-    throw new Error(
-      'Модель не вернула параметры коррекции.',
-    );
-  }
-
-  const values = outputTensor.data;
-
-  if (values.length < 3) {
-    throw new Error(
-      'Модель вернула некорректный результат.',
-    );
-  }
-
-  return {
-    brightness: round(
-      clamp(
-        Number(values[0]),
-        0.8,
-        1.28,
-      ),
-    ),
-    contrast: round(
-      clamp(
-        Number(values[1]),
-        0.88,
-        1.35,
-      ),
-    ),
-    saturation: round(
-      clamp(
-        Number(values[2]),
-        0.88,
-        1.3,
-      ),
-    ),
-  };
+  return runtime.predict(input);
 }
 
 async function processImage(
