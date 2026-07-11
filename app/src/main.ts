@@ -37,6 +37,9 @@ app.innerHTML = `
         Автоматический анализ яркости, контрастности и цветности
         без блокировки основного потока браузера.
       </p>
+      <a class="back-link" href="./benchmark.html">
+        Открыть performance benchmark
+      </a>
     </header>
 
     <section class="panel controls">
