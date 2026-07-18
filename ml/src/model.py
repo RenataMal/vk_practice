@@ -9,14 +9,6 @@ class TinyEnhancementModel(nn.Module):
         self.features = nn.Sequential(
             nn.Conv2d(
                 3,
-                8,
-                kernel_size=3,
-                stride=2,
-                padding=1,
-            ),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(
-                8,
                 16,
                 kernel_size=3,
                 stride=2,
@@ -25,15 +17,23 @@ class TinyEnhancementModel(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(
                 16,
-                24,
-                kernel_size=3,
-                stride=2,
-                padding=1,
-            ),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(
-                24,
                 32,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+            ),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(
+                32,
+                48,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+            ),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(
+                48,
+                64,
                 kernel_size=3,
                 stride=2,
                 padding=1,
@@ -44,16 +44,16 @@ class TinyEnhancementModel(nn.Module):
 
         self.regressor = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(32, 16),
+            nn.Linear(64, 32),
             nn.ReLU(inplace=True),
-            nn.Linear(16, 3),
+            nn.Linear(32, 3),
             nn.Sigmoid(),
         )
 
         self.register_buffer(
             "parameter_min",
             torch.tensor(
-                [0.80, 0.88, 0.88],
+                [0.65, 0.75, 0.70],
                 dtype=torch.float32,
             ),
         )
@@ -61,7 +61,7 @@ class TinyEnhancementModel(nn.Module):
         self.register_buffer(
             "parameter_max",
             torch.tensor(
-                [1.28, 1.35, 1.30],
+                [1.65, 1.35, 1.40],
                 dtype=torch.float32,
             ),
         )
