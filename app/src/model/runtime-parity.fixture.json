@@ -1,0 +1,38 @@
+{
+  "inputSize": 96,
+  "checkpoint": "best_balanced_synthetic_model.pt",
+  "cases": [
+    {
+      "name": "zeros",
+      "expected": {
+        "brightness": 1.641,
+        "contrast": 0.754,
+        "saturation": 1.02
+      }
+    },
+    {
+      "name": "ones",
+      "expected": {
+        "brightness": 0.662,
+        "contrast": 0.992,
+        "saturation": 1.01
+      }
+    },
+    {
+      "name": "gradient",
+      "expected": {
+        "brightness": 0.961,
+        "contrast": 0.945,
+        "saturation": 0.985
+      }
+    },
+    {
+      "name": "checkerboard",
+      "expected": {
+        "brightness": 0.65,
+        "contrast": 0.76,
+        "saturation": 0.959
+      }
+    }
+  ]
+}
