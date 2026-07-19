@@ -8,6 +8,7 @@ import type {
   TaskStatus,
 } from './types/task';
 
+
 const enhancer = new ImageEnhancer();
 
 let selectedFile: File | null = null;
@@ -15,19 +16,28 @@ let currentTaskId: string | null = null;
 let sourceObjectUrl: string | null = null;
 let resultObjectUrl: string | null = null;
 
+
 function getRequiredElement<T extends Element>(
   selector: string,
 ): T {
-  const element = document.querySelector<T>(selector);
+  const element =
+    document.querySelector<T>(selector);
 
   if (!element) {
-    throw new Error(`Элемент ${selector} не найден.`);
+    throw new Error(
+      `Элемент ${selector} не найден.`,
+    );
   }
 
   return element;
 }
 
-const app = getRequiredElement<HTMLDivElement>('#app');
+
+const app =
+  getRequiredElement<HTMLDivElement>(
+    '#app',
+  );
+
 
 app.innerHTML = `
   <main class="page">
@@ -116,6 +126,7 @@ app.innerHTML = `
         <div class="parameter-grid">
           <article class="metric-card">
             <span>Яркость</span>
+
             <strong id="brightness-value">
               1.00×
             </strong>
@@ -123,6 +134,7 @@ app.innerHTML = `
 
           <article class="metric-card">
             <span>Контрастность</span>
+
             <strong id="contrast-value">
               1.00×
             </strong>
@@ -130,6 +142,7 @@ app.innerHTML = `
 
           <article class="metric-card">
             <span>Цветность</span>
+
             <strong id="saturation-value">
               1.00×
             </strong>
@@ -137,6 +150,7 @@ app.innerHTML = `
 
           <article class="metric-card">
             <span>Время обработки</span>
+
             <strong id="total-time-value">
               0 мс
             </strong>
@@ -220,6 +234,7 @@ app.innerHTML = `
     </section>
   </main>
 `;
+
 
 const fileInput =
   getRequiredElement<HTMLInputElement>(
@@ -341,6 +356,7 @@ const encodingTimeValue =
     '#encoding-time-value',
   );
 
+
 const supportedMimeTypes = [
   'image/jpeg',
   'image/png',
@@ -359,6 +375,7 @@ const heicMimeTypes = [
   'image/heif-sequence',
 ];
 
+
 const statusNames: Record<
   TaskStatus['status'],
   string
@@ -373,16 +390,24 @@ const statusNames: Record<
   failed: 'Ошибка обработки',
 };
 
-function isHeicFile(file: File): boolean {
+
+function isHeicFile(
+  file: File,
+): boolean {
   return (
     heicMimeTypes.includes(
       file.type.toLowerCase(),
     ) ||
-    /\.(heic|heif)$/i.test(file.name)
+    /\.(heic|heif)$/i.test(
+      file.name,
+    )
   );
 }
 
-function isSupportedFile(file: File): boolean {
+
+function isSupportedFile(
+  file: File,
+): boolean {
   return (
     supportedMimeTypes.includes(
       file.type.toLowerCase(),
@@ -393,38 +418,53 @@ function isSupportedFile(file: File): boolean {
   );
 }
 
-function formatMultiplier(value: number): string {
+
+function formatMultiplier(
+  value: number,
+): string {
   return `${value.toFixed(2)}×`;
 }
+
 
 function formatTime(
   milliseconds: number,
 ): string {
   if (milliseconds >= 1000) {
-    return `${(milliseconds / 1000).toFixed(2)} с`;
+    return `${
+      (milliseconds / 1000).toFixed(2)
+    } с`;
   }
 
   return `${milliseconds.toFixed(1)} мс`;
 }
+
 
 function clearError(): void {
   errorText.hidden = true;
   errorText.textContent = '';
 }
 
-function showError(message: string): void {
+
+function showError(
+  message: string,
+): void {
   errorText.textContent = message;
   errorText.hidden = false;
 }
+
 
 function resetProgress(): void {
   progressBar.value = 0;
   progressText.textContent = '0%';
 }
 
+
 function resetResult(): void {
   if (resultObjectUrl) {
-    URL.revokeObjectURL(resultObjectUrl);
+    URL.revokeObjectURL(
+      resultObjectUrl,
+    );
+
     resultObjectUrl = null;
   }
 
@@ -443,9 +483,13 @@ function resetResult(): void {
   resultDetails.hidden = true;
 }
 
+
 function resetSource(): void {
   if (sourceObjectUrl) {
-    URL.revokeObjectURL(sourceObjectUrl);
+    URL.revokeObjectURL(
+      sourceObjectUrl,
+    );
+
     sourceObjectUrl = null;
   }
 
@@ -458,15 +502,20 @@ function resetSource(): void {
   sourcePlaceholder.hidden = false;
 }
 
+
 function setProcessingState(
   isProcessing: boolean,
 ): void {
   processButton.disabled =
     isProcessing || !selectedFile;
 
-  cancelButton.disabled = !isProcessing;
-  fileInput.disabled = isProcessing;
+  cancelButton.disabled =
+    !isProcessing;
+
+  fileInput.disabled =
+    isProcessing;
 }
+
 
 function renderParameters(
   parameters: EnhancementParameters,
@@ -487,11 +536,14 @@ function renderParameters(
     );
 }
 
+
 function renderMetrics(
   metrics: ProcessingMetrics,
 ): void {
   totalTimeValue.textContent =
-    formatTime(metrics.totalMs);
+    formatTime(
+      metrics.totalMs,
+    );
 
   resolutionValue.textContent =
     `${metrics.width} × ${metrics.height}`;
@@ -500,17 +552,26 @@ function renderMetrics(
     `${metrics.megapixels.toFixed(2)} Мп`;
 
   decodeTimeValue.textContent =
-    formatTime(metrics.decodeMs);
+    formatTime(
+      metrics.decodeMs,
+    );
 
   analysisTimeValue.textContent =
-    formatTime(metrics.analysisMs);
+    formatTime(
+      metrics.analysisMs,
+    );
 
   enhancementTimeValue.textContent =
-    formatTime(metrics.enhancementMs);
+    formatTime(
+      metrics.enhancementMs,
+    );
 
   encodingTimeValue.textContent =
-    formatTime(metrics.encodingMs);
+    formatTime(
+      metrics.encodingMs,
+    );
 }
+
 
 fileInput.addEventListener(
   'change',
@@ -561,16 +622,26 @@ fileInput.addEventListener(
       file.size / 1024 / 1024;
 
     const fileType =
-      file.type || 'неизвестный MIME-тип';
+      file.type ||
+      'неизвестный MIME-тип';
 
     fileInfo.textContent =
-      `${file.name} · ${sizeMb.toFixed(2)} МБ · ${fileType}`;
+      `${
+        file.name
+      } · ${
+        sizeMb.toFixed(2)
+      } МБ · ${
+        fileType
+      }`;
 
     statusText.textContent =
       'Изображение готово к обработке';
 
     if (isHeicFile(file)) {
-      sourceImage.removeAttribute('src');
+      sourceImage.removeAttribute(
+        'src',
+      );
+
       sourceImage.hidden = true;
 
       sourcePlaceholder.textContent =
@@ -592,6 +663,7 @@ fileInput.addEventListener(
   },
 );
 
+
 processButton.addEventListener(
   'click',
   async () => {
@@ -599,7 +671,8 @@ processButton.addEventListener(
       return;
     }
 
-    const fileToProcess = selectedFile;
+    const fileToProcess =
+      selectedFile;
 
     clearError();
     resetResult();
@@ -610,17 +683,27 @@ processButton.addEventListener(
 
     setProcessingState(true);
 
+    let submittedTaskId:
+      string | null = null;
+
     try {
+      submittedTaskId =
+        await enhancer.submit(
+          fileToProcess,
+        );
+
       currentTaskId =
-        await enhancer.submit(fileToProcess);
+        submittedTaskId;
 
       const result =
         await enhancer.getResult(
-          currentTaskId,
+          submittedTaskId,
         );
 
       resultObjectUrl =
-        URL.createObjectURL(result.blob);
+        URL.createObjectURL(
+          result.blob,
+        );
 
       resultImage.src =
         resultObjectUrl;
@@ -628,13 +711,19 @@ processButton.addEventListener(
       resultImage.hidden = false;
       resultPlaceholder.hidden = true;
 
-      renderParameters(result.parameters);
-      renderMetrics(result.metrics);
+      renderParameters(
+        result.parameters,
+      );
+
+      renderMetrics(
+        result.metrics,
+      );
 
       resultDetails.hidden = false;
 
       const extension =
-        result.blob.type === 'image/png'
+        result.blob.type ===
+        'image/png'
           ? 'png'
           : 'jpg';
 
@@ -664,11 +753,23 @@ processButton.addEventListener(
         showError(message);
       }
     } finally {
-      currentTaskId = null;
-      setProcessingState(false);
+      if (submittedTaskId) {
+        enhancer.release(
+          submittedTaskId,
+        );
+      }
+
+      if (
+        currentTaskId ===
+        submittedTaskId
+      ) {
+        currentTaskId = null;
+        setProcessingState(false);
+      }
     }
   },
 );
+
 
 cancelButton.addEventListener(
   'click',
@@ -677,10 +778,13 @@ cancelButton.addEventListener(
       return;
     }
 
+    const taskIdToCancel =
+      currentTaskId;
+
     try {
       const cancelled =
         await enhancer.cancel(
-          currentTaskId,
+          taskIdToCancel,
         );
 
       if (cancelled) {
@@ -695,11 +799,17 @@ cancelButton.addEventListener(
 
       showError(message);
     } finally {
-      currentTaskId = null;
-      setProcessingState(false);
+      if (
+        currentTaskId ===
+        taskIdToCancel
+      ) {
+        currentTaskId = null;
+        setProcessingState(false);
+      }
     }
   },
 );
+
 
 enhancer.addEventListener(
   'statuschange',
@@ -712,7 +822,8 @@ enhancer.addEventListener(
 
     if (
       currentTaskId &&
-      status.taskId !== currentTaskId
+      status.taskId !==
+        currentTaskId
     ) {
       return;
     }
@@ -727,7 +838,9 @@ enhancer.addEventListener(
       status.progress;
 
     if (status.error) {
-      showError(status.error);
+      showError(
+        status.error,
+      );
     }
 
     if (
@@ -739,6 +852,7 @@ enhancer.addEventListener(
     }
   },
 );
+
 
 window.addEventListener(
   'beforeunload',

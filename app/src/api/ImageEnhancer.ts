@@ -5,6 +5,7 @@ import type {
   WorkerOutputMessage,
 } from '../types/task';
 
+
 interface ResultWaiter {
   resolve: (result: EnhancementResult) => void;
   reject: (error: Error) => void;
@@ -17,8 +18,13 @@ interface TaskRecord {
   waiters: ResultWaiter[];
 }
 
+
+const DEFAULT_PROCESSING_TIMEOUT_MS = 30_000;
+
+
 export class ImageEnhancer extends EventTarget {
-  private readonly tasks = new Map<string, TaskRecord>();
+  private readonly tasks =
+    new Map<string, TaskRecord>();
 
   private readonly queue: string[] = [];
 
@@ -26,10 +32,33 @@ export class ImageEnhancer extends EventTarget {
 
   private activeTaskId: string | null = null;
 
-  constructor() {
+  private activeTimeoutId:
+    ReturnType<typeof setTimeout> | null = null;
+
+  private readonly processingTimeoutMs: number;
+
+
+  constructor(
+    processingTimeoutMs =
+      DEFAULT_PROCESSING_TIMEOUT_MS,
+  ) {
     super();
+
+    if (
+      !Number.isFinite(processingTimeoutMs) ||
+      processingTimeoutMs <= 0
+    ) {
+      throw new RangeError(
+        'Лимит времени должен быть положительным числом.',
+      );
+    }
+
+    this.processingTimeoutMs =
+      processingTimeoutMs;
+
     this.worker = this.createWorker();
   }
+
 
   async submit(file: File): Promise<string> {
     if (!(file instanceof File)) {
@@ -39,7 +68,9 @@ export class ImageEnhancer extends EventTarget {
     }
 
     if (file.size === 0) {
-      throw new Error('Выбранный файл пуст.');
+      throw new Error(
+        'Выбранный файл пуст.',
+      );
     }
 
     const taskId = crypto.randomUUID();
@@ -51,25 +82,35 @@ export class ImageEnhancer extends EventTarget {
       error: null,
     };
 
-    this.tasks.set(taskId, {
-      status: initialStatus,
-      file,
-      result: null,
-      waiters: [],
-    });
+    this.tasks.set(
+      taskId,
+      {
+        status: initialStatus,
+        file,
+        result: null,
+        waiters: [],
+      },
+    );
 
     this.queue.push(taskId);
+
     this.emitStatus(initialStatus);
     this.startNextTask();
 
     return taskId;
   }
 
-  async getStatus(taskId: string): Promise<TaskStatus> {
+
+  async getStatus(
+    taskId: string,
+  ): Promise<TaskStatus> {
     const task = this.getTask(taskId);
 
-    return { ...task.status };
+    return {
+      ...task.status,
+    };
   }
+
 
   async getResult(
     taskId: string,
@@ -88,35 +129,48 @@ export class ImageEnhancer extends EventTarget {
     }
 
     if (task.status.status === 'cancelled') {
-      throw new Error('Задача была отменена.');
+      throw new Error(
+        'Задача была отменена.',
+      );
     }
 
     return new Promise<EnhancementResult>(
       (resolve, reject) => {
-        task.waiters.push({
-          resolve,
-          reject,
-        });
+        task.waiters.push(
+          {
+            resolve,
+            reject,
+          },
+        );
       },
     );
   }
 
-  async cancel(taskId: string): Promise<boolean> {
+
+  async cancel(
+    taskId: string,
+  ): Promise<boolean> {
     const task = this.getTask(taskId);
 
-    if (this.isTerminalStatus(task.status.status)) {
+    if (
+      this.isTerminalStatus(
+        task.status.status,
+      )
+    ) {
       return false;
     }
 
     if (this.activeTaskId === taskId) {
-      this.worker.terminate();
-      this.worker = this.createWorker();
-      this.activeTaskId = null;
+      this.restartWorker();
     } else {
-      const queueIndex = this.queue.indexOf(taskId);
+      const queueIndex =
+        this.queue.indexOf(taskId);
 
       if (queueIndex !== -1) {
-        this.queue.splice(queueIndex, 1);
+        this.queue.splice(
+          queueIndex,
+          1,
+        );
       }
     }
 
@@ -129,7 +183,9 @@ export class ImageEnhancer extends EventTarget {
 
     for (const waiter of task.waiters) {
       waiter.reject(
-        new Error('Задача была отменена.'),
+        new Error(
+          'Задача была отменена.',
+        ),
       );
     }
 
@@ -141,14 +197,42 @@ export class ImageEnhancer extends EventTarget {
     return true;
   }
 
+
+  release(taskId: string): boolean {
+    const task = this.tasks.get(taskId);
+
+    if (
+      !task ||
+      !this.isTerminalStatus(
+        task.status.status,
+      )
+    ) {
+      return false;
+    }
+
+    task.waiters.length = 0;
+
+    return this.tasks.delete(taskId);
+  }
+
+
   dispose(): void {
+    this.clearActiveTimeout();
     this.worker.terminate();
 
     for (const task of this.tasks.values()) {
-      if (!this.isTerminalStatus(task.status.status)) {
-        for (const waiter of task.waiters) {
+      if (
+        !this.isTerminalStatus(
+          task.status.status,
+        )
+      ) {
+        for (
+          const waiter of task.waiters
+        ) {
           waiter.reject(
-            new Error('Модуль обработки остановлен.'),
+            new Error(
+              'Модуль обработки остановлен.',
+            ),
           );
         }
       }
@@ -158,6 +242,7 @@ export class ImageEnhancer extends EventTarget {
     this.activeTaskId = null;
     this.tasks.clear();
   }
+
 
   private createWorker(): Worker {
     const worker = new Worker(
@@ -173,17 +258,23 @@ export class ImageEnhancer extends EventTarget {
     worker.onmessage = (
       event: MessageEvent<WorkerOutputMessage>,
     ): void => {
-      this.handleWorkerMessage(event.data);
+      this.handleWorkerMessage(
+        event.data,
+      );
     };
 
-    worker.onerror = (event: ErrorEvent): void => {
+    worker.onerror = (
+      event: ErrorEvent,
+    ): void => {
       this.handleWorkerError(
-        event.message || 'Ошибка Web Worker.',
+        event.message ||
+          'Ошибка Web Worker.',
       );
     };
 
     return worker;
   }
+
 
   private startNextTask(): void {
     if (this.activeTaskId) {
@@ -191,17 +282,21 @@ export class ImageEnhancer extends EventTarget {
     }
 
     while (this.queue.length > 0) {
-      const taskId = this.queue.shift();
+      const taskId =
+        this.queue.shift();
 
       if (!taskId) {
         return;
       }
 
-      const task = this.tasks.get(taskId);
+      const task =
+        this.tasks.get(taskId);
 
       if (
         !task ||
-        this.isTerminalStatus(task.status.status)
+        this.isTerminalStatus(
+          task.status.status,
+        )
       ) {
         continue;
       }
@@ -214,18 +309,50 @@ export class ImageEnhancer extends EventTarget {
         file: task.file,
       };
 
-      this.worker.postMessage(message);
+      this.activeTimeoutId = setTimeout(
+        () => {
+          this.handleTaskTimeout(
+            taskId,
+          );
+        },
+        this.processingTimeoutMs,
+      );
+
+      try {
+        this.worker.postMessage(
+          message,
+        );
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : 'Не удалось запустить обработку.';
+
+        this.restartWorker();
+
+        this.failTask(
+          taskId,
+          errorMessage,
+        );
+      }
 
       return;
     }
   }
 
+
   private handleWorkerMessage(
     message: WorkerOutputMessage,
   ): void {
-    const task = this.tasks.get(message.taskId);
+    const task =
+      this.tasks.get(message.taskId);
 
-    if (!task) {
+    if (
+      !task ||
+      this.isTerminalStatus(
+        task.status.status,
+      )
+    ) {
       return;
     }
 
@@ -243,6 +370,14 @@ export class ImageEnhancer extends EventTarget {
     }
 
     if (message.type === 'result') {
+      if (
+        this.activeTaskId ===
+        message.taskId
+      ) {
+        this.clearActiveTimeout();
+        this.activeTaskId = null;
+      }
+
       task.result = message.result;
 
       task.status = {
@@ -252,15 +387,15 @@ export class ImageEnhancer extends EventTarget {
         error: null,
       };
 
-      for (const waiter of task.waiters) {
-        waiter.resolve(message.result);
+      for (
+        const waiter of task.waiters
+      ) {
+        waiter.resolve(
+          message.result,
+        );
       }
 
       task.waiters = [];
-
-      if (this.activeTaskId === message.taskId) {
-        this.activeTaskId = null;
-      }
 
       this.emitStatus(task.status);
       this.startNextTask();
@@ -276,14 +411,14 @@ export class ImageEnhancer extends EventTarget {
     }
   }
 
+
   private handleWorkerError(
     errorMessage: string,
   ): void {
-    const failedTaskId = this.activeTaskId;
+    const failedTaskId =
+      this.activeTaskId;
 
-    this.worker.terminate();
-    this.worker = this.createWorker();
-    this.activeTaskId = null;
+    this.restartWorker();
 
     if (failedTaskId) {
       this.failTask(
@@ -295,14 +430,31 @@ export class ImageEnhancer extends EventTarget {
     }
   }
 
+
   private failTask(
     taskId: string,
     errorMessage: string,
   ): void {
-    const task = this.tasks.get(taskId);
+    const task =
+      this.tasks.get(taskId);
 
     if (!task) {
       return;
+    }
+
+    if (
+      this.isTerminalStatus(
+        task.status.status,
+      )
+    ) {
+      return;
+    }
+
+    if (
+      this.activeTaskId === taskId
+    ) {
+      this.clearActiveTimeout();
+      this.activeTaskId = null;
     }
 
     task.status = {
@@ -312,7 +464,9 @@ export class ImageEnhancer extends EventTarget {
       error: errorMessage,
     };
 
-    for (const waiter of task.waiters) {
+    for (
+      const waiter of task.waiters
+    ) {
       waiter.reject(
         new Error(errorMessage),
       );
@@ -320,16 +474,65 @@ export class ImageEnhancer extends EventTarget {
 
     task.waiters = [];
 
-    if (this.activeTaskId === taskId) {
-      this.activeTaskId = null;
-    }
-
     this.emitStatus(task.status);
     this.startNextTask();
   }
 
-  private getTask(taskId: string): TaskRecord {
-    const task = this.tasks.get(taskId);
+
+  private handleTaskTimeout(
+    taskId: string,
+  ): void {
+    if (
+      this.activeTaskId !== taskId
+    ) {
+      return;
+    }
+
+    const timeoutSeconds =
+      Math.ceil(
+        this.processingTimeoutMs /
+          1000,
+      );
+
+    this.restartWorker();
+
+    this.failTask(
+      taskId,
+      `Обработка превысила допустимое время (${timeoutSeconds} с).`,
+    );
+  }
+
+
+  private clearActiveTimeout(): void {
+    if (
+      this.activeTimeoutId === null
+    ) {
+      return;
+    }
+
+    clearTimeout(
+      this.activeTimeoutId,
+    );
+
+    this.activeTimeoutId = null;
+  }
+
+
+  private restartWorker(): void {
+    this.clearActiveTimeout();
+
+    this.worker.terminate();
+    this.worker = this.createWorker();
+
+    this.activeTaskId = null;
+  }
+
+
+  private getTask(
+    taskId: string,
+  ): TaskRecord {
+    const task =
+      this.tasks.get(taskId);
 
     if (!task) {
       throw new Error(
@@ -339,6 +542,7 @@ export class ImageEnhancer extends EventTarget {
 
     return task;
   }
+
 
   private isTerminalStatus(
     status: TaskStatus['status'],
@@ -350,12 +554,17 @@ export class ImageEnhancer extends EventTarget {
     );
   }
 
-  private emitStatus(status: TaskStatus): void {
+
+  private emitStatus(
+    status: TaskStatus,
+  ): void {
     this.dispatchEvent(
       new CustomEvent<TaskStatus>(
         'statuschange',
         {
-          detail: { ...status },
+          detail: {
+            ...status,
+          },
         },
       ),
     );
